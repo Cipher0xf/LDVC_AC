@@ -1,0 +1,3 @@
+gcc [FILE_NAME] -lgmp -lelips
+
+gcc BBS+.c -lgmp -lelips
