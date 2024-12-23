@@ -7,7 +7,7 @@
 __uint64_t p;  // order of prime field Zp
 g1_t g1;       // base generator of G1
 g2_t g2;       // base generator of G2
-int L = 500;   // number of messages to be signed
+int L = 1000;   // number of messages to be signed
 g1_t h[MAX_L]; // random generators of G1
 fr_t x;        // secret key
 g2_t w;        // public key
@@ -34,7 +34,7 @@ void init()
     g1_init(&d);
     g1_init(&π1);
     g1_init(&π2);
-    g1_set_random(&g1, state); // TODO
+    g1_set_random(&g1, state);
     g2_set_random(&g2, state);
     for (int i = 0; i < MAX_L; i++)
     {
@@ -66,8 +66,8 @@ void sign(fr_t *m, g1_t *_A, fr_t *_ε, fr_t *_s)
     g1_init(&h_m);
     fr_set_random(_ε, state);
     fr_set_random(_s, state);
-    g1_scm(&h0_s, &h[0], _s); // h0^s
-    g1_eca(&B, &g1, &h0_s);   // g1·h0^s
+    g1_scm(&h0_s, &h[0], _s);
+    g1_eca(&B, &g1, &h0_s);
     for (int i = 1; i <= L; i++)
     {
         g1_scm(&h_m, &h[i], &m[i]);
@@ -89,9 +89,19 @@ void sigVf(fr_t *m, g1_t *_A, fr_t *_ε, fr_t *_s)
     g2_scm(&temp, &g2, _ε);
     g2_eca(&temp, &w, &temp);
     g1g2_to_g3_pairing(&left, _A, &temp);
+    g1_t h0_s, h_m;
+    g1_init(&h0_s);
+    g1_init(&h_m);
+    g1_scm(&h0_s, &h[0], _s);
+    g1_eca(&B, &g1, &h0_s);
+    for (int i = 1; i <= L; i++)
+    {
+        g1_scm(&h_m, &h[i], &m[i]);
+        g1_eca(&B, &B, &h_m);
+    } // B=g1·h0^s·Π{1≤i≤L}(hi^mi)
     g1g2_to_g3_pairing(&right, &B, &g2);
     printf("Signature Verification:\n");
-    g3_cmp(&left, &right) ? printf("REJECT\n") : printf("ACCESS\n");
+    g3_cmp(&left, &right) ? printf("REJECT\n") : printf("ACCEPT\n");
 }
 void show(fr_t *m, int *Disclose, g1_t *_A, fr_t *_ε, fr_t *_s, g1_t *_A_prime, g1_t *_A_bar, g1_t *_d, g1_t *_π1, g1_t *_π2)
 {
@@ -113,7 +123,16 @@ void show(fr_t *m, int *Disclose, g1_t *_A, fr_t *_ε, fr_t *_s, g1_t *_A_prime,
     fr_init(&neg_r2);
     fr_neg(&neg_ε, _ε);
     fr_neg(&neg_r2, &r2);
-    g1_t B_r1, h0_r2, h0_neg_r2, h0_neg_s_prime;
+    g1_t B_r1, h0_s, h_m, h0_r2, h0_neg_r2, h0_neg_s_prime;
+    g1_init(&h0_s);
+    g1_init(&h_m);
+    g1_scm(&h0_s, &h[0], _s);
+    g1_eca(&B, &g1, &h0_s);
+    for (int i = 1; i <= L; i++)
+    {
+        g1_scm(&h_m, &h[i], &m[i]);
+        g1_eca(&B, &B, &h_m);
+    } // B=g1·h0^s·Π{1≤i≤L}(hi^mi)
     g1_init(&B_r1);
     g1_init(&h0_r2);
     g1_init(&h0_neg_r2);
@@ -151,8 +170,9 @@ void verify(fr_t *m, int *Disclose, g1_t *_A_prime, g1_t *_A_bar, g1_t *_d, g1_t
     g3_init(&right);
     g1g2_to_g3_pairing(&left, _A_prime, &w);
     g1g2_to_g3_pairing(&right, _A_bar, &g2);
-    // printf("Signature Verification (Selective Disclosure):\n");
-    // g3_cmp(&left, &right) ? printf("REJECT\n") : printf("ACCESS\n"); // e(A',w)≟e(A̅,g2)
+    printf("Signature Verification: ");
+    g3_cmp(&left, &right) ? printf("REJECT\n") : printf("ACCEPT\n"); // e(A',w)≟e(A̅,g2)
+
     /* (2) ZKP verification */
     int check_hidden, check_disclosed;
     g1_t temp;
@@ -171,8 +191,8 @@ void verify(fr_t *m, int *Disclose, g1_t *_A_prime, g1_t *_A_bar, g1_t *_d, g1_t
         }
     }
     check_disclosed = g1_cmp(&temp, _π2); // g1·Π{i∈AD}(hi^mi)≟π2
-    // printf("Zero-Knowledge Proof Verification:\n");
-    // (check_hidden || check_disclosed) ? printf("REJECT\n") : printf("ACCESS\n");
+    printf("Proof Verification: ");
+    (check_hidden || check_disclosed) ? printf("REJECT\n") : printf("ACCEPT\n");
     // printf("%d %d\n", check_hidden, check_disclosed);
 }
 void flatten()
@@ -183,7 +203,7 @@ void mapGen();
 void reorder();
 void printDisclosed(int L)
 {
-    printf("Disclosed Indexes:\n");
+    printf("Disclosed Indexes: ");
     for (int i = 1; i <= L; i++)
     {
         if (Disclose[i] == 1)
@@ -196,6 +216,8 @@ void printDisclosed(int L)
 void timeMeasure(int L, int num)
 {
     printf("Disclose %d/%d\n", num, L);
+    init();
+    keyGen(L);
     for (int i = 1; i <= L; i++)
     {
         fr_set_random(&m[i], state);
@@ -212,17 +234,19 @@ void timeMeasure(int L, int num)
         }
         Disclose[index] = 1;
     }
-    // printDisclosed(L);
+    printDisclosed(L);
 
     clock_t start, end, total;
     double cost;
+    sign(m, &A, &ε, &s);
+    
     /* time of show() */
     start = clock();
-    sign(m, &A, &ε, &s);
     show(m, Disclose, &A, &ε, &s, &A_prime, &A_bar, &d, &π1, &π2);
     end = clock();
     cost = (double)(end - start) / CLOCKS_PER_SEC * 1000;
     printf("Show: %.3fms\n", cost);
+
     /* time of verify() */
     start = clock();
     verify(m, Disclose, &A_prime, &A_bar, &d, &π1, &π2);
@@ -234,13 +258,19 @@ void timeMeasure(int L, int num)
 
 int main()
 {
-    init();
-    keyGen(L);
     for (int num = 5; num <= 30; num += 5)
     {
         timeMeasure(L, num);
     }
+    
+    // for (int L = 100; L <= 500; L += 100)
+    // {
+    //     timeMeasure(L, 30);
+    // }
+
     /* test */
+    // init();
+    // keyGen(L);
     // sign(m, &A, &ε, &s);
     // sigVf(m, &A, &ε, &s);
     // show(m, Disclose, &A, &ε, &s, &A_prime, &A_bar, &d, &π1, &π2);
